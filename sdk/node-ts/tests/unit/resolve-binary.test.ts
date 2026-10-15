@@ -1,9 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const triple = process.platform === "darwin" ? "darwin-arm64"
@@ -16,12 +15,9 @@ beforeEach(() => {
   sdk = join(root, "sdk");
   mkdirSync(sdk);
   writeFileSync(join(sdk, "package.json"), JSON.stringify({ type: "module", exports: "./resolver.js" }));
-  // Compile the actual resolver into an isolated file-linked SDK so installed
+  // Copy the built resolver into an isolated file-linked SDK so installed
   // checkout platform packages cannot satisfy its import.meta.url lookup.
-  const source = readFileSync(resolve("src/internal/resolve-binary.ts"), "utf8");
-  writeFileSync(join(sdk, "resolver.js"), ts.transpileModule(source, {
-    compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.ESNext },
-  }).outputText);
+  copyFileSync(resolve("dist/internal/resolve-binary.js"), join(sdk, "resolver.js"));
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
