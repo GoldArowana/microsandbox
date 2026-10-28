@@ -2,8 +2,7 @@
 //!
 //! Both the host CLI and the in-VM runtime open the same SQLite file and
 //! must apply identical PRAGMAs (WAL, busy timeout, foreign keys,
-//! synchronous=NORMAL). Centralising the builder keeps that contract in
-//! one place — when a new PRAGMA is needed, this is the only file to edit.
+//! synchronous=NORMAL). Centralising the builder keeps that contract in one place — when a new PRAGMA is needed, this is the only file to edit.
 
 use std::{path::Path, time::Duration};
 
@@ -11,6 +10,10 @@ use sea_orm::{DatabaseConnection, SqlxSqliteConnector};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 
 use crate::connection::{DbReadConnection, DbWriteConnection};
+
+//--------------------------------------------------------------------------------------------------
+// Constants
+//--------------------------------------------------------------------------------------------------
 
 /// Default `busy_timeout` PRAGMA value used when a caller has no
 /// user-facing knob to plumb (e.g. the in-VM runtime, where the host
@@ -82,9 +85,12 @@ pub(crate) async fn build_pool(
     busy_timeout: Duration,
     create_if_missing: bool,
 ) -> Result<DatabaseConnection, sqlx::Error> {
+    let db_path = crate::private_storage::prepare_database_file(db_path, create_if_missing)
+        .map_err(sqlx::Error::Io)?;
+
     let connect_options = SqliteConnectOptions::new()
-        .filename(db_path)
-        .create_if_missing(create_if_missing)
+        .filename(&db_path)
+        .create_if_missing(false)
         .journal_mode(SqliteJournalMode::Wal)
         .busy_timeout(busy_timeout)
         .foreign_keys(true)
@@ -96,5 +102,15 @@ pub(crate) async fn build_pool(
         .connect_with(connect_options)
         .await?;
 
+    harden_database_files(&db_path).map_err(sqlx::Error::Io)?;
+
     Ok(SqlxSqliteConnector::from_sqlx_sqlite_pool(pool))
 }
+
+//--------------------------------------------------------------------------------------------------
+// Re-Exports
+//--------------------------------------------------------------------------------------------------
+
+#[cfg(unix)]
+pub use crate::private_storage::{PRIVATE_DATABASE_DIRECTORY_MODE, PRIVATE_DATABASE_FILE_MODE};
+pub use crate::private_storage::{ensure_private_database_directory, harden_database_files};

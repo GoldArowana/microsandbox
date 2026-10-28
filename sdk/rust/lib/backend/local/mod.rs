@@ -619,7 +619,7 @@ async fn connect_catalog(
     database: &DatabaseConfig,
     snapshots_dir: &Path,
 ) -> MicrosandboxResult<DbPools> {
-    tokio::fs::create_dir_all(db_dir).await?;
+    microsandbox_db::pool::ensure_private_database_directory(db_dir)?;
     let _migration_lock = acquire_migration_lock(db_dir).await?;
     refuse_incomplete_self_downgrade(db_dir)?;
 
@@ -1057,6 +1057,23 @@ mod tests {
 
         // DB file should exist on disk.
         assert!(db_dir.join(microsandbox_utils::DB_FILENAME).exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            assert_eq!(
+                std::fs::metadata(&db_dir).unwrap().permissions().mode() & 0o777,
+                microsandbox_db::pool::PRIVATE_DATABASE_DIRECTORY_MODE
+            );
+            assert_eq!(
+                std::fs::metadata(db_dir.join(microsandbox_utils::DB_FILENAME))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                microsandbox_db::pool::PRIVATE_DATABASE_FILE_MODE
+            );
+        }
 
         // All migrated tables should be present.
         let rows = conn

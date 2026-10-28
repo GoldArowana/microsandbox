@@ -55,6 +55,10 @@ impl LocalBackend {
             Err(error) => return Err(error.into()),
         }
 
+        // Usage and control lookups may open a legacy catalog before the normal writable
+        // connection path runs. Tighten the directory at this boundary as well.
+        microsandbox_db::pool::ensure_private_database_directory(&db_dir)?;
+
         // Use the same installation coordination as the slow path. In particular, a rolled
         // back database can look current while an incomplete downgrade still owns its files.
         let migration_lock = acquire_migration_lock(&db_dir).await?;
